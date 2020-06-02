@@ -143,3 +143,22 @@ removed from the system.
 random walk and random destination agent.
 1. Introduce `TRAVELLING` event type to simulate cruising.
 1. Introduce other evet types.
+
+## Fleet Manager Interface
+
+Contestants for GISCUP 2020 will provide an implemenation of the Fleet Manager Interface. GISCUP 2020 will distribute
+a default FLeet Manager implementation that controls each agent to do a random walk when not on route.
+The Fleet Manager interface will consists of the following methods:
+
+* `ResourceBecomesAvailable(resource_id, time, life_time_duration)`
+This tells that fleet manager that a resource is now available at `time` and that it will be available after `life_time_diruation`
+at which point it will expire.
+
+* `DestinationReached(agent_id, time, loc)`
+This tells the Fleet Manager the agent has reached an intersection/destination or a pickup/drop-off.
+The fleet manager should return the next location or to pickup or to drop-off.
+to travel to for the agent. Note it is the responsiblity of the fleet manager to know the status of the agent, i.e.
+whether it has a customer or not on its own.
+
+The fleet manager will be initialized with a fixed number of agents that it can place anywhere on the map
+
