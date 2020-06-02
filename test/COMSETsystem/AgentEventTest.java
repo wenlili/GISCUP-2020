@@ -6,9 +6,6 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 
-import java.util.PriorityQueue;
-import java.util.TreeSet;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.*;
@@ -51,37 +48,30 @@ public class AgentEventTest {
     public void testDropOffHandler_NoWaitingResources() throws Exception {
         // expectations and mocks
         when(mockSimulator.MakeAgent(anyLong())).thenReturn(mockAgent);
-        mockSimulator.emptyAgents = new TreeSet<>(new Simulator.AgentEventComparator());
         mockLocationOnRoad.travelTimeFromStartIntersection = 1000;
         mockLocationOnRoad.road = mockRoad;
         mockRoad.travelTime = 200001;
         AgentEvent spyEvent = spy(new AgentEvent(mockLocationOnRoad, 100, mockSimulator));
-        doReturn(mockNoPickUp).when(mockSimulator).FindEarliestPickup(mockLocationOnRoad);
+        doReturn(mockNoPickUp).when(mockSimulator).findEarliestPickup(mockLocationOnRoad);
+        doReturn(true).when(mockNoPickUp).isNone();
 
         // Run code under test
         Event nextEvent = spyEvent.trigger();
 
         // Check results
         assertEquals(spyEvent, nextEvent);
-        assertEquals(1, mockSimulator.emptyAgents.size());
-        assertTrue(mockSimulator.emptyAgents.contains(spyEvent));
+        verify(mockSimulator).markEmpty(spyEvent);
         assertEquals(199101, spyEvent.time);
         assertEquals(AgentEvent.INTERSECTION_REACHED, spyEvent.eventCause);
         assertEquals(mockRoad, spyEvent.loc.road);
         assertEquals(200001, spyEvent.loc.travelTimeFromStartIntersection);
     }
 
-    @SuppressWarnings({"unchecked", "ResultOfMethodCallIgnored"})
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     @Test
     public void testDropOffHandler_WaitingResources() throws Exception {
         // expectations and mocks
         when(mockSimulator.MakeAgent(anyLong())).thenReturn(mockAgent);
-
-        //TODO DropOffHandler knows far too much about the simulator, remove those dependencies.
-        // Doing that also do away with this horrible mock setups.
-        mockSimulator.emptyAgents = (TreeSet<AgentEvent>) mock(TreeSet.class);
-        mockSimulator.waitingResources = (TreeSet<ResourceEvent>) mock(TreeSet.class);
-        mockSimulator.events = (PriorityQueue<Event>) mock(PriorityQueue.class);
 
         // Create a ResourceEvent to Pickup
         LocationOnRoad mockDropOffLoc = mock(LocationOnRoad.class);
@@ -91,6 +81,7 @@ public class AgentEventTest {
 
         // Setup Mock Pickup
         Simulator.PickUp mockActualPickUp = mock(Simulator.PickUp.class);
+        doReturn(false).when(mockActualPickUp).isNone();
         doReturn(customer).when(mockActualPickUp).getResource();
         doReturn(TIME_TO_PICKUP_CUSTOMER).when(mockActualPickUp).getTime();
 
@@ -98,7 +89,7 @@ public class AgentEventTest {
         mockLocationOnRoad.road = mockRoad;
         mockRoad.travelTime = 200001;
         AgentEvent spyEvent = spy(new AgentEvent(mockLocationOnRoad, 100, mockSimulator));
-        doReturn(mockActualPickUp).when(mockSimulator).FindEarliestPickup(mockLocationOnRoad);
+        doReturn(mockActualPickUp).when(mockSimulator).findEarliestPickup(mockLocationOnRoad);
 
         // Run code under test
         Event nextEvent = spyEvent.trigger();
@@ -106,11 +97,7 @@ public class AgentEventTest {
         // Check results
         assertEquals(spyEvent, nextEvent);
 
-        //TODO Symption of DropOffHandler knowing too much about the simulator.  We sholdn't be
-        // verifying the consistency of simulator data structures when we are testing AgentEvent
-        verify(mockSimulator.emptyAgents).remove(spyEvent);
-        verify(mockSimulator.waitingResources).remove(customer);
-        verify(mockSimulator.events).remove(customer);
+        verify(mockSimulator).assignResourceToAgent(customer, spyEvent);
 
         assertEquals(CUSTOMER_TRIP_TIME + TIME_TO_PICKUP_CUSTOMER, spyEvent.time);
         assertEquals(AgentEvent.DROPPING_OFF, spyEvent.eventCause);

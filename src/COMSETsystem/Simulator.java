@@ -215,13 +215,14 @@ public class Simulator {
 		score.end();
 	}
 
+	//TODO: Test this
 	/**
 	 * Get the closest resource that will not expire before the agent reaches it
 	 *
 	 * @param agentLoc  Location of agent.
 	 * @return PickUp instance with ResourceAgent and time of pickup, or empty PickUp
 	 */
-	public PickUp FindEarliestPickup(final LocationOnRoad agentLoc) {
+	public PickUp findEarliestPickup(final LocationOnRoad agentLoc) {
 		// Check if there are resources waiting to be picked up by an agent.
 		if (waitingResources.size() > 0) {
 			ResourceEvent resource = null;
@@ -253,6 +254,28 @@ public class Simulator {
 		}
 	}
 
+    //TODO: Test this
+	protected void markNotWaiting(ResourceEvent bestResource) {
+        waitingResources.remove(bestResource);
+        events.remove(bestResource); // resource is pickup and does not expire anymore.
+    }
+
+	//TODO: Test this
+	protected void markOccupied(final AgentEvent agentEvent) {
+		// "Label" the agent as occupied
+		emptyAgents.remove(agentEvent);
+	}
+
+	protected void markEmpty(final AgentEvent agentEvent) {
+		emptyAgents.add(agentEvent);
+	}
+
+	//TODO: Test this
+	protected void assignResourceToAgent(ResourceEvent bestResource, final AgentEvent agentEvent) {
+		markOccupied(agentEvent);
+		markNotWaiting(bestResource);
+	}
+
 	protected static class PickUp {
 		private final ResourceEvent resource;
 		private final long time;
@@ -269,6 +292,8 @@ public class Simulator {
 		public long getTime() {
 			return time;
 		}
+
+		public boolean isNone() { return resource == null; }
 
 	}
 

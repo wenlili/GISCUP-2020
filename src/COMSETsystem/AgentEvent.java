@@ -110,61 +110,55 @@ public class AgentEvent extends Event {
         Logger.getLogger(this.getClass().getName()).log(Level.INFO, "Dropoff at " + loc, this);
         // Only check the following when an agent drops off a resource.
 
-        Simulator.PickUp pickUp = simulator.FindEarliestPickup(loc);
-        ResourceEvent bestResource = pickUp.getResource();
-        long earliest = pickUp.getTime();
+        Simulator.PickUp pickUp = simulator.findEarliestPickup(loc);
+        if (!pickUp.isNone()) {
+            ResourceEvent customer = pickUp.getResource();
 
-        // if a a waiting resource is reachable in time by this agent make an assignment
-        if (bestResource != null) {
             // update the statistics
             long cruiseTime = time - startSearchTime;
-            long approachTime = earliest - time;
+            long approachTime = pickUp.getTime() - time;
             long searchTime = cruiseTime + approachTime;
-            long waitTime = earliest - bestResource.availableTime;
+            long waitTime = pickUp.getTime() - customer.availableTime;
             simulator.totalAgentCruiseTime += cruiseTime;
             simulator.totalAgentApproachTime += approachTime;
             simulator.totalAgentSearchTime += searchTime;
             simulator.totalAssignments++;
             simulator.totalResourceWaitTime += waitTime;
-            simulator.totalResourceTripTime += bestResource.tripTime;
+            simulator.totalResourceTripTime += customer.tripTime;
 
             // Inform the assignment to the agent.
-            assignedTo(loc, time, bestResource.id, bestResource.pickupLoc, bestResource.dropoffLoc);
+            assignedTo(loc, time, customer.id, customer.pickupLoc, customer.dropoffLoc);
 
-            // "Label" the agent as occupied
-            simulator.emptyAgents.remove(this);
-
-            simulator.waitingResources.remove(bestResource);
-            simulator.events.remove(bestResource); // resource is pickup and does not expire anymore.
+            simulator.assignResourceToAgent(customer, this);
 
             // set time and location of the next trigger
-            setEvent(earliest + bestResource.tripTime, bestResource.dropoffLoc, DROPPING_OFF);
+            setEvent(pickUp.getTime() + customer.tripTime, customer.dropoffLoc, DROPPING_OFF);
 
-            Logger.getLogger(this.getClass().getName()).log(Level.INFO, "Assigned to resource id = " + bestResource.id + " with pickupLoc at " + bestResource.pickupLoc + " and dropoffLoc at " + bestResource.dropoffLoc, this);
+            Logger.getLogger(this.getClass().getName()).log(Level.INFO, "Assigned to resource id = " + customer.id + " with pickupLoc at " + customer.pickupLoc + " and dropoffLoc at " + customer.dropoffLoc, this);
             Logger.getLogger(this.getClass().getName()).log(Level.INFO, "From agent to resource = " + approachTime + " seconds.", this);
-            Logger.getLogger(this.getClass().getName()).log(Level.INFO, "From pickupLoc to dropoffLoc = " + (time - earliest) + " seconds.", this);
+            Logger.getLogger(this.getClass().getName()).log(Level.INFO, "From pickupLoc to dropoffLoc = " + (time - pickUp.getTime()) + " seconds.", this);
             Logger.getLogger(this.getClass().getName()).log(Level.INFO, "cruise time = " + cruiseTime + " seconds.", this);
             Logger.getLogger(this.getClass().getName()).log(Level.INFO, "approach time = " + approachTime + " seconds.", this);
             Logger.getLogger(this.getClass().getName()).log(Level.INFO, "search time = " + searchTime + " seconds.", this);
             Logger.getLogger(this.getClass().getName()).log(Level.INFO, "wait time = " + waitTime + " seconds.", this);
             Logger.getLogger(this.getClass().getName()).log(Level.INFO, "Next trigger time = " + time, this);
-            return this;
+        } else {
+            // No resource/customer to pickup
+
+            // Let agent plan a search route after the current dropoff.
+            LocationOnRoad locAgentCopy = simulator.agentCopy(loc);
+            agent.planSearchRoute(locAgentCopy, time);
+
+            // no resources have been assigned to the agent
+            // so if the agent was not empty, make it empty for other resources
+            // "Label" the agent as empty.
+            simulator.markEmpty(this);
+
+            // move to the end intersection of the current road
+            long nextEventTime = time + loc.road.travelTime - loc.travelTimeFromStartIntersection;
+            LocationOnRoad nextLoc = new LocationOnRoad(loc.road, loc.road.travelTime);
+            setEvent(nextEventTime, nextLoc, INTERSECTION_REACHED);
         }
-
-
-        // Let agent plan a search route after the current dropoff.
-        LocationOnRoad locAgentCopy = simulator.agentCopy(loc);
-        agent.planSearchRoute(locAgentCopy, time);
-
-        // no resources have been assigned to the agent
-        // so if the agent was not empty, make it empty for other resources
-        // "Label" the agent as empty.
-        simulator.emptyAgents.add(this);
-
-        // move to the end intersection of the current road
-        long nextEventTime = time + loc.road.travelTime - loc.travelTimeFromStartIntersection;
-        LocationOnRoad nextLoc = new LocationOnRoad(loc.road, loc.road.travelTime);
-        setEvent(nextEventTime, nextLoc, INTERSECTION_REACHED);
 
         return this;
     }
