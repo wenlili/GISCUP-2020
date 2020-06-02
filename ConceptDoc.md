@@ -10,7 +10,6 @@ The manager will control the agent at a more granular level than in 2019.
 * **Dynamic Travel Times**. The travel time through each segment can vary
 probabilistically as a function of time-of-day
 and is determined by a traffic model.
-* Failures. Taxis may fail at any time. _**UNDER DISCUSSION**_
 
 For more details, see [GISCUP 2020 Problem Definition](https://docs.google.com/document/d/e/2PACX-1vQ6PL6krQtLjtWs8pI3UKI_NhNuFr_Ecl_Kfk77Yt3ZLzrf2lWt6A1UUCgAbf3JMgnXR9VhfWXJCtab/pub)
 
@@ -18,7 +17,7 @@ This document outlines GISCUP 2020's conceptual differences from GISCUP 2019.
 We do not intend to cover all of 2019's functionality but to
 supply enough details to highlight the key differences.
 
-In the code and here, the term agent is synonymous with taxes; resource, with customers.
+In the code and here, the term agent is synonymous with taxis; resource, with customers.
 Here, we use the synonyms interchangeably.
 
 ## Simulation in GISCUP 2019
@@ -52,9 +51,9 @@ Interrupting an agent from cruising to pick up a resource is implemented by remo
 an agent's scheduled `INTERSECTION_REACHED` event, and scheduling a
 `DROPPING_OFF` event for the agent.
 
-### States of `ResourceEvent`
+### Types of `ResourceEvent`
 Two `ResourceEvent` types are used to model a resource or a customer.
-Not there is no corresponding `Resource` class.
+Note that unlike the coupled classes `AgentEvent` and `Agent`, there is no corresponding `Resource` class.
 
 1. `BECOME_AVAILABLE` represents the event of a resource looking for a ride.
 The handler searches for the *closest* cruising agent, one that can reach the
@@ -62,8 +61,10 @@ pick up point the soonest.
 Once identified the agent is interrrupted by descheduling its next
 `INTERSECTION_REACHED` event and scheduling a `DROPPING_OFF` event
 
-    **Note:** When the corresponding `DROPPING_OFF` event is handled,
-    it searches for the nearest resource, i.e. the one above.
+    If no soonest agent is found the resource is added to a list of waiting resources in the simulator.
+    Agents that drop off their resource will search for the closest waiting resource.
+    Thus two different events can trigger resource-to-agent assignment. Agent drop-off triggered assignment
+    may result in a non-optimal assignment, i.e. there many exist another empty agent that can reach the pick-up sooner.
 
 2. `EXPIRED` represents a resource in which all agents cannot reach it
 before its maxiumum life time expires.
@@ -74,20 +75,20 @@ An agent is represented by two classes `AgentEvent` and `Agent`.
 The event class models the behavior.
 The contestants supplies their own `Agent` class by deriving the
 abstract class `BaseAgent`.
-The supplied class plans cruising roues to maximize the likelihood of
-an available agent to serve a resource with minimal waiting time.
+This supplied class plans cruising routes to maximize the likelihood of
+an available agent to serve resources, while minimizing waiting time.
 
 ## Simulation in GISCUP 2020
 
 ### Fleet Management
 
 In 2020 we introduce the concept of fleet management as represented by
-a contestant supplied Fleet Manager class, derived from the abstract
-class `BaseFleetManager`.
+a contestant supplied Fleet Manager, an implementation of the `FleetManagerInterface`.
 This class provides route planning and resource assignment.
 In 2020 the fleet manager will have to plan all routes to take into
 account dynamic travel time.
-The fleet manager can reconsiders each agent's route at each intersection.
+The simulator will notify fleet managers of resource availability and agent state.
+Fleet managers will direct all travels of agents, road segment by road segment.
 
 ### More Granular Route Simulation
 
@@ -96,7 +97,7 @@ the route from pick-up to drop-off is not fully simulated.
 Instead the simulator just jumps time forward for the agent
 from pick-up to drop-off, where time is the travel time of
 the shortest path between pick-up and drop-off.
-In 2020 simulation of all travels will be simulated road segment 
+In 2020 all travels will be simulated road segment 
 by road segment to
 implement dynamic travel time.
 
@@ -104,8 +105,8 @@ implement dynamic travel time.
 
 #### Remove `BaseAgent`
 Much of `BaseAgent`'s functionality will have been supplanted by
-`BaseFleetManager`.
-We will identify an agent to the Flee tManager by index.
+contestant-supplied fleet manager.
+We will identify an agent to the Fleet Manager by index.
 Most of an agent's behavior will be modeled by the Fleet Manger.
 
 #### Add more refined types of events in `AgentEvent`
@@ -146,10 +147,46 @@ The travel speed at a road segment will be updated every Q minutes (e.g., N=15) 
 
 In other words, we adjust the travel speeds so that the average trip time produced by COMSET is consistent with tachat by the real data.
 
+
+
+## Fleet Manager Interface
+
+Contestants for GISCUP 2020 will provide an implemenation of the Fleet Manager Interface. GISCUP 2020 will distribute
+a default FLeet Manager implementation that controls each agent to do a random walk when not on route.
+Note it is the responsiblity of the fleet manager to track the status of the agent:
+
+* Empty and cruising
+* Empty and on its way to a pick-up
+* Occupied and on its way to a drop-off
+
+The simulator implements the behavior of the agents and resources. The simulator notifies the fleet manager of events
+be calling the fleet manager's methods:
+
+* `NotifyResourceAvailability(resource_id, time, life_time_duration)`
+tells that fleet manager that a resource is now available at `time` and that it will be available after
+`life_time_diruation` at which point it will expire. We expect the fleet manager to select an agent to
+service the resource. It will then direct that agent to the pick-up, when the agent reports back to the
+fleet manager in one of its `DestinationReached` calls.
+
+* `NotifyAgentReachedDestination(agent_id, time, loc)`
+tells the Fleet Manager the agent has reached its destination: an intersection, a pick-up or drop-off point.
+The fleet manager should return the next action for the agent:
+
+  * Continue travelling to another destination.
+  * Pick-up an resource.
+  * Drop-off a resource.
+
+### Fleet Manager and Traffic Model
+
+Because travel time can vary dynamically, contestants can try to learn the travel times from the time it takes
+an agent to travel a road segment.  It receives these travel times indirectly from `NotifyAgentReachDestination`
+calls.
+Learning traffic pattern could allow the Fleet Manager to more optimally assign
+agents to resource, as well as pick a longer, but quicker route.
+
 ## Implementation Plan
 
-1. Write Unit Tests for existing GISCUP 2019. This is an ideal way to but we might not have time for this.
-1. Move all planning into a new `BaseFleetManager` class, and supply fleet managers that models current
-random walk and random destination agent.
-1. Introduce `TRAVELLING` event type to simulate cruising.
-1. Introduce other evet types.
+1. Write Unit Tests for existing GISCUP 2019. This is an ideal way but we might not have time for this.
+1. Move all planning into a new Fleet Manager class, and supply fleet managers that models current
+random walk and random destination agent. The code should behave largely the same as the original at this point.
+1. TBD
