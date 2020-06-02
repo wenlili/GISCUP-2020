@@ -163,9 +163,9 @@ The simulator implements the behavior of the agents and resources. The simulator
 be calling the fleet manager's methods:
 
 * `NotifyResourceAvailability(resource_id, time, life_time_duration)`
-tells that fleet manager that a resource is now available at `time` and that it will be available after
-`life_time_diruation` at which point it will expire. We expect the fleet manager to select an agent to
-service the resource. It will then direct that agent to the pick-up, when the agent reports back to the
+tells the fleet manager that a resource is now available at `time` and that it expire after
+`life_time_duration`. We expect the fleet manager to select an agent to
+service the resource. The Fleet Manager will then direct that agent to the pick-up, when it reports back to the
 fleet manager in one of its `DestinationReached` calls.
 
 * `NotifyAgentReachedDestination(agent_id, time, loc)`
