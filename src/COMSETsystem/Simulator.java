@@ -2,6 +2,8 @@ package COMSETsystem;
 
 import MapCreation.*;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.text.NumberFormat;
 import java.util.*;
 import me.tongfei.progressbar.*;
@@ -54,6 +56,12 @@ public class Simulator {
 
 	// Full path to a KML defining the bounding polygon to crop the map
 	protected String boundingPolygonKMLFile;
+
+	// The beginning time of the simulation
+	protected long simulationStartTime;
+
+	// The current Simulation Time
+	protected long simulationTime;
 
 	// The simulation end time is the expiration time of the last resource.
 	protected long simulationEndTime; 
@@ -122,10 +130,11 @@ public class Simulator {
 	 * @param totalAgents The total number of agents to deploy
 	 * @param boundingPolygonKMLFile The KML file defining a bounding polygon of the simulated area
 	 * @param maximumLifeTime The maximum life time of a resource
-	 * @param agentPlacementSeed The see for the random number of generator when placing the agents
-	 * @param speedRudction The speed reduction to accommodate traffic jams and turn delays
+	 * @param agentPlacementRandomSeed The see for the random number of generator when placing the agents
+	 * @param speedReduction The speed reduction to accommodate traffic jams and turn delays
 	 */
-	public void configure(String mapJSONFile, String resourceFile, Long totalAgents, String boundingPolygonKMLFile, Long maximumLifeTime, long agentPlacementRandomSeed, double speedReduction) {
+	public void configure(String mapJSONFile, String resourceFile, Long totalAgents, String boundingPolygonKMLFile,
+						  Long maximumLifeTime, long agentPlacementRandomSeed, double speedReduction) {
 
 		this.mapJSONFile = mapJSONFile;
 
@@ -157,10 +166,10 @@ public class Simulator {
 
 		// map match resources
 		System.out.println("Loading and map-matching resources...");
-		long latestResourceTime = mapWD.createMapWithData(this);
 
 		// The simulation end time is the expiration time of the last resource.
-		this.simulationEndTime = latestResourceTime;
+		// which is return by createMapWithData
+		this.simulationEndTime = mapWD.createMapWithData(this);
 
 		// Deploy agents at random locations of the map.
 		System.out.println("Randomly placing " + this.totalAgents + " agents on the map...");
@@ -175,9 +184,8 @@ public class Simulator {
 	 * is created in order to keep track of performance in the current
 	 * simulation. Go through every event until the simulation is over.
 	 *
-	 * @throws Exception since triggering events may create an Exception
 	 */
-	public void run() throws Exception {
+	public void run() {
 		System.out.println("Running the simulation...");
 
 		ScoreInfo score = new ScoreInfo();
@@ -185,10 +193,14 @@ public class Simulator {
 			System.out.println("map is null at beginning of run");
 		}
 		try (ProgressBar pb = new ProgressBar("Progress:", 100, ProgressBarStyle.ASCII)) {
-			long beginTime = events.peek().time;
-			while (events.peek().time <= simulationEndTime) {
+			assert events.peek() != null;
+			simulationStartTime = simulationTime = events.peek().time;
+			while (simulationTime <= simulationEndTime) {
+				assert events.peek() != null;
+				simulationTime = events.peek().time;
 				Event toTrigger = events.poll();
-				pb.stepTo((long)(((float)(toTrigger.time - beginTime)) / (simulationEndTime - beginTime) * 100.0));
+				pb.stepTo((long)(((float)(toTrigger.time - simulationStartTime))
+						/ (simulationEndTime - simulationStartTime) * 100.0));
 				Event e = toTrigger.trigger();
 				if (e != null) { 
 					events.add(e);
@@ -201,6 +213,63 @@ public class Simulator {
 		System.out.println("Simulation finished.");
 
 		score.end();
+	}
+
+	/**
+	 * Get the closest resource that will not expire before the agent reaches it
+	 *
+	 * @param agentLoc  Location of agent.
+	 * @return PickUp instance with ResourceAgent and time of pickup, or empty PickUp
+	 */
+	public PickUp FindEarliestPickup(final LocationOnRoad agentLoc) {
+		// Check if there are resources waiting to be picked up by an agent.
+		if (waitingResources.size() > 0) {
+			ResourceEvent resource = null;
+			long earliest = Long.MAX_VALUE;
+			for (ResourceEvent res : waitingResources) {
+				// If res is in waitingResources, then it must have not expired yet
+				// testing null pointer exception
+				long travelTime = Long.MAX_VALUE;
+				if (agentLoc == null) {
+					System.out.println("loc is null");
+				} else if (res.pickupLoc == null) {
+					System.out.println("res.loc is null");
+				} else {
+					travelTime = map.travelTimeBetween(agentLoc, res.pickupLoc);
+				}
+
+				if (travelTime != Long.MAX_VALUE) {
+					// if the resource is reachable before expiration
+					long arriveTime = simulationTime + travelTime;
+					if (arriveTime <= res.expirationTime && arriveTime < earliest) {
+						earliest = arriveTime;
+						resource = res;
+					}
+				}
+			}
+			return new PickUp(resource, earliest);
+		} else {
+			return new PickUp(null, 0);
+		}
+	}
+
+	protected static class PickUp {
+		private final ResourceEvent resource;
+		private final long time;
+
+		public PickUp(ResourceEvent resource, long time) {
+			this.resource = resource;
+			this.time = time;
+		}
+
+		public ResourceEvent getResource() {
+			return resource;
+		}
+
+		public long getTime() {
+			return time;
+		}
+
 	}
 
 	/**
@@ -244,17 +313,16 @@ public class Simulator {
 
 			// probably unnecessary
 			sb.append("Performance Report: " + "\n");
-			sb.append("free memory: " + format.format(freeMemory / 1024) + "\n");
-			sb.append("allocated memory: " + format.format(allocatedMemory / 1024)
-			+ "\n");
-			sb.append("max memory: " + format.format(maxMemory / 1024) + "\n");
+			sb.append("free memory: ").append(format.format(freeMemory / 1024)).append("\n");
+			sb.append("allocated memory: ").append(format.format(allocatedMemory / 1024)).append("\n");
+			sb.append("max memory: ").append(format.format(maxMemory / 1024)).append("\n");
 
 			// still looking into this one "freeMemory + (maxMemory -
 			// allocatedMemory)"
-			sb.append("total free memory: "
-					+ format.format(
-							(freeMemory + (maxMemory - allocatedMemory)) / 1024)
-					+ "\n");
+			sb.append("total free memory: ")
+					.append(format.format(
+							(freeMemory + (maxMemory - allocatedMemory)) / 1024))
+					.append("\n");
 
 			System.out.print(sb.toString());
 		}
@@ -296,14 +364,27 @@ public class Simulator {
 					totalRemainTime += (simulationEndTime - ae.startSearchTime); 
 				}
 
-				sb.append("average agent search time: " + Math.floorDiv(totalAgentSearchTime + totalRemainTime, (totalAssignments + emptyAgents.size())) + " seconds \n");
-				sb.append("average resource wait time: " + Math.floorDiv(totalResourceWaitTime, totalResources) + " seconds \n");
-				sb.append("resource expiration percentage: " + Math.floorDiv(expiredResources * 100, totalResources) + "%\n");
+				sb.append("average agent search time: ")
+						.append(Math.floorDiv(totalAgentSearchTime + totalRemainTime,
+								(totalAssignments + emptyAgents.size())))
+						.append(" seconds \n");
+				sb.append("average resource wait time: ")
+						.append(Math.floorDiv(totalResourceWaitTime, totalResources))
+						.append(" seconds \n");
+				sb.append("resource expiration percentage: ")
+						.append(Math.floorDiv(expiredResources * 100, totalResources))
+						.append("%\n");
 				sb.append("\n");
-				sb.append("average agent cruise time: " + Math.floorDiv(totalAgentCruiseTime, totalAssignments) + " seconds \n");
-				sb.append("average agent approach time: " + Math.floorDiv(totalAgentApproachTime, totalAssignments) + " seconds \n");
-				sb.append("average resource trip time: " + Math.floorDiv(totalResourceTripTime, totalAssignments) + " seconds \n");
-				sb.append("total number of assignments: " + totalAssignments + "\n");
+				sb.append("average agent cruise time: ")
+						.append(Math.floorDiv(totalAgentCruiseTime, totalAssignments)).append(" seconds \n");
+				sb.append("average agent approach time: ")
+						.append(Math.floorDiv(totalAgentApproachTime, totalAssignments)).append(" seconds \n");
+				sb.append("average resource trip time: ")
+						.append(Math.floorDiv(totalResourceTripTime, totalAssignments))
+						.append(" seconds \n");
+				sb.append("total number of assignments: ")
+						.append(totalAssignments)
+						.append("\n");
 			} else {
 				sb.append("No resources.\n");
 			}
@@ -315,7 +396,7 @@ public class Simulator {
 	/**
 	 * Compares agent events
 	 */
-	class AgentEventComparator implements Comparator<AgentEvent> {
+	static class AgentEventComparator implements Comparator<AgentEvent> {
 
 		/**
 		 * Checks if two agentEvents are the same by checking their ids.
@@ -327,19 +408,14 @@ public class Simulator {
 		 * -1 otherwise
 		 */
 		public int compare(AgentEvent a1, AgentEvent a2) {
-			if (a1.id == a2.id)
-				return 0;
-			else if (a1.id > a2.id)
-				return 1;
-			else
-				return -1;
+			return Long.compare(a1.id, a2.id);
 		}
 	}
 
 	/**
 	 * Compares resource events
 	 */
-	class ResourceEventComparator implements Comparator<ResourceEvent> {
+	static class ResourceEventComparator implements Comparator<ResourceEvent> {
 		/**
 		 * Checks if two resourceEvents are the same by checking their ids.
 		 * 
@@ -350,12 +426,7 @@ public class Simulator {
 		 * -1 otherwise
 		 */
 		public int compare(ResourceEvent a1, ResourceEvent a2) {
-			if (a1.id == a2.id)
-				return 0;
-			else if (a1.id > a2.id)
-				return 1;
-			else
-				return -1;
+			return Long.compare(a1.id, a2.id);
 		}
 	}
 
@@ -405,6 +476,13 @@ public class Simulator {
 	}
 
 	/**
+	 * @param agent Add this agent to the set of empty agents
+	 */
+	public void addEmptyAgent(AgentEvent agent) {
+		this.emptyAgents.add(agent);
+	}
+
+	/**
 	 * Sets the empty agents in the simulation
 	 * 
 	 * @param emptyAgents The TreeSet of agent events to set.
@@ -423,7 +501,19 @@ public class Simulator {
 		Intersection from = mapForAgents.intersections().get(locationOnRoad.road.from.id);
 		Intersection to = mapForAgents.intersections().get(locationOnRoad.road.to.id);
 		Road roadAgentCopy = from.roadsMapFrom.get(to);
-		LocationOnRoad locationOnRoadAgentCopy = new LocationOnRoad(roadAgentCopy, locationOnRoad.travelTimeFromStartIntersection);
-		return locationOnRoadAgentCopy;
+		return new LocationOnRoad(roadAgentCopy, locationOnRoad.travelTimeFromStartIntersection);
 	}
+
+	public BaseAgent MakeAgent(long id) {
+		try {
+			Constructor<? extends BaseAgent> cons = this.agentClass.getConstructor(Long.TYPE, CityMap.class);
+			return cons.newInstance(id, this.mapForAgents);
+		} catch (NoSuchMethodException | IllegalAccessException | InstantiationException |
+				InvocationTargetException e) {
+			e.printStackTrace();
+		}
+		return null;
+	}
+
+
 }
