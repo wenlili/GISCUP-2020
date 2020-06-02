@@ -75,20 +75,20 @@ An agent is represented by two classes `AgentEvent` and `Agent`.
 The event class models the behavior.
 The contestants supplies their own `Agent` class by deriving the
 abstract class `BaseAgent`.
-The supplied class plans cruising roues to maximize the likelihood of
-an available agent to serve a resource with minimal waiting time.
+This supplied class plans cruising routes to maximize the likelihood of
+an available agent to serve resources, while minimizing waiting time.
 
 ## Simulation in GISCUP 2020
 
 ### Fleet Management
 
 In 2020 we introduce the concept of fleet management as represented by
-a contestant supplied Fleet Manager class, derived from the abstract
-class `BaseFleetManager`.
+a contestant supplied Fleet Manager, an implementation of the `FleetManagerInterface`.
 This class provides route planning and resource assignment.
 In 2020 the fleet manager will have to plan all routes to take into
 account dynamic travel time.
-The fleet manager can reconsiders each agent's route at each intersection.
+The simulator will notify fleet managers of resource availability and agent state.
+Fleet managers will direct all travels of agents, road segment by road segment.
 
 ### More Granular Route Simulation
 
@@ -97,7 +97,7 @@ the route from pick-up to drop-off is not fully simulated.
 Instead the simulator just jumps time forward for the agent
 from pick-up to drop-off, where time is the travel time of
 the shortest path between pick-up and drop-off.
-In 2020 simulation of all travels will be simulated road segment 
+In 2020 all travels will be simulated road segment 
 by road segment to
 implement dynamic travel time.
 
@@ -105,8 +105,8 @@ implement dynamic travel time.
 
 #### Remove `BaseAgent`
 Much of `BaseAgent`'s functionality will have been supplanted by
-`BaseFleetManager`.
-We will identify an agent to the Flee tManager by index.
+contestant-supplied fleet manager.
+We will identify an agent to the Fleet Manager by index.
 Most of an agent's behavior will be modeled by the Fleet Manger.
 
 #### Add more refined types of events in `AgentEvent`
@@ -147,13 +147,7 @@ The travel speed at a road segment will be updated every Q minutes (e.g., N=15) 
 
 In other words, we adjust the travel speeds so that the average trip time produced by COMSET is consistent with tachat by the real data.
 
-## Implementation Plan
 
-1. Write Unit Tests for existing GISCUP 2019. This is an ideal way to but we might not have time for this.
-1. Move all planning into a new `BaseFleetManager` class, and supply fleet managers that models current
-random walk and random destination agent.
-1. Introduce `TRAVELLING` event type to simulate cruising.
-1. Introduce other evet types.
 
 ## Fleet Manager Interface
 
@@ -190,3 +184,9 @@ calls.
 Learning traffic pattern could allow the Fleet Manager to more optimally assign
 agents to resource, as well as pick a longer, but quicker route.
 
+## Implementation Plan
+
+1. Write Unit Tests for existing GISCUP 2019. This is an ideal way but we might not have time for this.
+1. Move all planning into a new Fleet Manager class, and supply fleet managers that models current
+random walk and random destination agent. The code should behave largely the same as the original at this point.
+1. TBD
